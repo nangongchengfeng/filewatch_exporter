@@ -1,14 +1,15 @@
 package main
 
 import (
-	"filewatch_exporter/collector"
 	"flag"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"io"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"log"
-	"math/rand"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -19,53 +20,130 @@ import (
  * @Email: 1794748404@qq.com
  * @Date: 2025-02-26 16:46
  */
-var (
-	// Set during go build
-	// version   string
-	// gitCommit string
 
-	// 命令行参数
-	listenAddr       = flag.String("c", "8080", "An port to listen on for web interface and telemetry.")
-	metricsPath      = flag.String("web.telemetry-path", "/metrics", "A path under which to expose metrics.")
-	metricsNamespace = flag.String("metric.namespace", "app", "Prometheus metrics namespace, as the prefix of metrics name")
+// Config 结构体定义了配置文件的结构
+type Config struct {
+	Server struct {
+		ListenAddress string `yaml:"listen_address"`
+		MetricsPath   string `yaml:"metrics_path"`
+	} `yaml:"server"`
+	Files    []string `yaml:"files"`
+	Interval int      `yaml:"check_interval_seconds"`
+}
+
+var (
+	// 定义配置文件路径
+	//configFile = flag.String("conf", "config.yaml", "Path to configuration file")
+	configFile = "conf/config.yaml"
+	// 定义一个gauge类型的指标，用于表示文件是否存在
+	fileExistsMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "filewatch_file_exists",
+			Help: "Indicates whether a file exists (1) or not (0)",
+		},
+		[]string{"path"},
+	)
+
+	// 全局配置对象
+	config Config
 )
 
-func Query(w http.ResponseWriter, r *http.Request) {
-	//模拟业务逻辑
-	//模拟业务查询耗时0~1s
-	time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
-	_, _ = io.WriteString(w, "some results")
+// 初始化函数，注册指标
+func init() {
+	// 注册指标到Prometheus默认注册表
+	prometheus.MustRegister(fileExistsMetric)
+}
+
+// 加载YAML配置文件
+func loadConfig(configPath string) (Config, error) {
+	var config Config
+
+	// 设置默认值
+	config.Server.ListenAddress = ":9100"
+	config.Server.MetricsPath = "/metrics"
+	config.Interval = 10
+
+	// 读取配置文件
+	data, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return config, err
+	}
+
+	// 解析YAML
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return config, err
+	}
+
+	return config, nil
+}
+
+// 检查文件是否存在
+func checkFileExists(path string) float64 {
+	_, err := os.Stat(path)
+	if err == nil {
+		return 1 // 文件存在
+	}
+	if os.IsNotExist(err) {
+		return 0 // 文件不存在
+	}
+	log.Printf("Error checking file %s: %v", path, err)
+	return 0 // 发生错误也视为不存在
+}
+
+// 更新所有监控文件的状态指标
+func updateFileMetrics() {
+	for {
+		for _, filePath := range config.Files {
+			exists := checkFileExists(filePath)
+			fileExistsMetric.WithLabelValues(filePath).Set(exists)
+			log.Printf("Updated metrics for %s: exists = %.0f", filePath, exists)
+		}
+
+		// 根据配置的间隔时间检查文件状态
+		time.Sleep(time.Duration(config.Interval) * time.Second)
+	}
 }
 
 func main() {
-	// 解析命令行参数
 	flag.Parse()
 
-	// 创建一个文件监控器
-	apiRequestCounter := collector.NewAPIRequestCounter(*metricsNamespace)
-	registry := prometheus.NewRegistry()
-	registry.MustRegister(apiRequestCounter)
-	// 设置HTTP服务器以处理Prometheus指标的HTTP请求
-	http.Handle(*metricsPath, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+	// 加载配置
+	var err error
+	config, err = loadConfig(configFile)
+	if err != nil {
+		log.Fatalf("Error loading configuration: %v", err)
+	}
 
-	// 设置根路径的处理函数，用于返回一个简单的HTML页面，包含指向指标页面的链接
+	// 启动一个goroutine定期更新文件状态指标
+	go updateFileMetrics()
+
+	// 配置HTTP服务器来暴露指标
+	http.Handle(config.Server.MetricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html>
-	            <head><title>A Prometheus Exporter</title></head>
-	            <body>
-	            <h1>A Prometheus Exporter</h1>
-	            <p><a href='/metrics'>Metrics</a></p>
-	            </body>
-	            </html>`))
-	})
-	// 模拟API请求的处理函数
-	http.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
-		apiRequestCounter.IncrementRequestCount()
-		// 模拟API处理时间
-		w.Write([]byte("API请求处理成功"))
+			<head><title>File Monitor Exporter</title></head>
+			<body>
+			<h1>File Monitor Exporter</h1>
+			<p>Monitoring files:</p>
+			<ul>
+				` + getMonitoredFilesHTML() + `
+			</ul>
+			<p><a href="` + config.Server.MetricsPath + `">Metrics</a></p>
+			</body>
+			</html>`))
 	})
 
-	// 记录启动日志并启动HTTP服务器监听
-	log.Printf("Starting Server at http://localhost:%s%s", *listenAddr, *metricsPath)
-	log.Fatal(http.ListenAndServe(":"+*listenAddr, nil))
+	log.Printf("Starting File Monitor Exporter on %s", config.Server.ListenAddress)
+	log.Printf("Monitoring %d files: %s", len(config.Files), strings.Join(config.Files, ", "))
+	log.Fatal(http.ListenAndServe(config.Server.ListenAddress, nil))
+}
+
+// 生成监控文件列表的HTML
+func getMonitoredFilesHTML() string {
+	var html strings.Builder
+	for _, file := range config.Files {
+		html.WriteString("<li>" + file + "</li>")
+	}
+	return html.String()
 }

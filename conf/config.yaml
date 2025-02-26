@@ -1,0 +1,15 @@
+# 服务器配置
+server:
+  listen_address: ":9100"  # 监听地址和端口
+  metrics_path: "/metrics" # 指标路径
+
+# 监控的文件列表
+files:
+  - "/etc/my.conf"
+  - "/etc/nginx/nginx.conf"
+  - "/var/log/syslog"
+  - "/tmp/test.log"
+  - "logs/log.go"
+
+# 检查间隔（秒）
+check_interval_seconds: 10
