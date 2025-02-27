@@ -26,11 +26,13 @@ type FileCollector struct {
 	fileExists  *prometheus.Desc
 	fileChanges *prometheus.Desc
 	fileChmod   *prometheus.Desc
+	fileSize    *prometheus.Desc
 	mutex       sync.Mutex
 	states      map[string]float64
 	changes     map[string]float64
 	hashes      map[string]string
 	permissions map[string]float64
+	sizes       map[string]float64
 	lastReset   time.Time
 }
 
@@ -59,11 +61,18 @@ func NewFileCollector(config *config.Config) *FileCollector {
 			[]string{"path"},
 			nil,
 		),
+		fileSize: prometheus.NewDesc(
+			"filewatch_file_size",
+			"Current file size in bytes",
+			[]string{"path"},
+			nil,
+		),
 		// 初始化states、changes和hashes三个map
 		states:      make(map[string]float64),
 		changes:     make(map[string]float64),
 		hashes:      make(map[string]string),
 		permissions: make(map[string]float64),
+		sizes:       make(map[string]float64),
 		// 初始化lastReset为当前时间
 		lastReset: time.Now(),
 	}
@@ -80,6 +89,7 @@ func (c *FileCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.fileExists
 	ch <- c.fileChanges
 	ch <- c.fileChmod
+	ch <- c.fileSize
 }
 
 // Collect 实现Collector接口
@@ -105,6 +115,12 @@ func (c *FileCollector) Collect(ch chan<- prometheus.Metric) {
 				c.fileChmod,
 				prometheus.GaugeValue,
 				c.permissions[path],
+				path,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.fileSize,
+				prometheus.GaugeValue,
+				c.sizes[path],
 				path,
 			)
 		}
@@ -147,7 +163,7 @@ func (c *FileCollector) checkFiles() {
 		}
 		c.states[path] = exists
 
-		// Only check permissions and content if file exists
+		// Only check permissions, size and content if file exists
 		if exists == 1 {
 			// Check file permissions
 			currentPerms := c.getFilePermissions(path)
@@ -155,6 +171,13 @@ func (c *FileCollector) checkFiles() {
 				log.Printf("File permissions change: %s permissions = %.0f", path, currentPerms)
 			}
 			c.permissions[path] = currentPerms
+
+			// Check file size
+			currentSize := c.getFileSize(path)
+			if oldSize, ok := c.sizes[path]; !ok || oldSize != currentSize {
+				log.Printf("File size change: %s size = %.0f bytes", path, currentSize)
+			}
+			c.sizes[path] = currentSize
 
 			// Check content changes
 			currentHash, err := c.calculateFileHash(path)
@@ -218,4 +241,14 @@ func (c *FileCollector) getFilePermissions(path string) float64 {
 	// Convert os.FileMode to numeric format (e.g. 0644 -> 644)
 	perm := float64(info.Mode().Perm())
 	return perm
+}
+
+// getFileSize returns the file size in bytes
+func (c *FileCollector) getFileSize(path string) float64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		log.Printf("Error getting size for %s: %v", path, err)
+		return 0
+	}
+	return float64(info.Size())
 }
