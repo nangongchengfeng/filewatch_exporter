@@ -12,4 +12,6 @@ files:
   - "logs/log.go"
 
 # 检查间隔（秒）
-check_interval_seconds: 10
+check_interval_seconds: 30
+# 重置间隔（分钟）
+reset_interval_minutes: 30
