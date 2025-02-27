@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,21 +36,20 @@ type FileCollector struct {
 	permissions map[string]float64
 	sizes       map[string]float64
 	lastReset   time.Time
+	// 存储展开后的文件列表
+	expandedFiles map[string]bool
 }
 
 // NewFileCollector 函数用于创建一个新的FileCollector实例
 func NewFileCollector(config *config.Config) *FileCollector {
-	// 创建一个新的FileCollector实例
 	collector := &FileCollector{
 		config: config,
-		// 创建一个名为filewatch_file_exists的prometheus描述符，用于表示文件是否存在
 		fileExists: prometheus.NewDesc(
 			"filewatch_file_exists",
 			"Indicates whether a file exists (1) or not (0)",
 			[]string{"path"},
 			nil,
 		),
-		// 创建一个名为filewatch_file_change的prometheus描述符，用于表示文件自上次重置以来更改的次数
 		fileChanges: prometheus.NewDesc(
 			"filewatch_file_change",
 			"Number of times the file has changed since last reset",
@@ -67,19 +68,20 @@ func NewFileCollector(config *config.Config) *FileCollector {
 			[]string{"path"},
 			nil,
 		),
-		// 初始化states、changes和hashes三个map
-		states:      make(map[string]float64),
-		changes:     make(map[string]float64),
-		hashes:      make(map[string]string),
-		permissions: make(map[string]float64),
-		sizes:       make(map[string]float64),
-		// 初始化lastReset为当前时间
-		lastReset: time.Now(),
+		states:        make(map[string]float64),
+		changes:       make(map[string]float64),
+		hashes:        make(map[string]string),
+		permissions:   make(map[string]float64),
+		sizes:         make(map[string]float64),
+		lastReset:     time.Now(),
+		expandedFiles: make(map[string]bool),
 	}
 
-	// 启动后台监控goroutine
+	// 初始展开文件通配符
+	collector.expandGlobPatterns()
+
 	go collector.monitor()
-	go collector.resetCounter() // Start the reset counter goroutine
+	go collector.resetCounter()
 
 	return collector
 }
@@ -149,12 +151,65 @@ func (c *FileCollector) resetCounter() {
 	}
 }
 
-// checkFiles 检查所有配置的文件
-func (c *FileCollector) checkFiles() {
+// expandGlobPatterns 展开所有的通配符模式为实际的文件路径
+func (c *FileCollector) expandGlobPatterns() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	for _, path := range c.config.Files {
+	newExpandedFiles := make(map[string]bool)
+
+	for _, pattern := range c.config.Files {
+		// 检查是否包含通配符
+		if containsGlobChar(pattern) {
+			matches, err := filepath.Glob(pattern)
+			if err != nil {
+				log.Printf("Error expanding glob pattern %s: %v", pattern, err)
+				continue
+			}
+			// 添加匹配到的文件
+			for _, match := range matches {
+				newExpandedFiles[match] = true
+				if _, exists := c.expandedFiles[match]; !exists {
+					log.Printf("New file matched by pattern %s: %s", pattern, match)
+				}
+			}
+		} else {
+			// 不包含通配符的直接添加
+			newExpandedFiles[pattern] = true
+		}
+	}
+
+	// 检查移除的文件
+	for oldFile := range c.expandedFiles {
+		if !newExpandedFiles[oldFile] {
+			log.Printf("File no longer matched by any pattern: %s", oldFile)
+			// 清理相关状态
+			delete(c.states, oldFile)
+			delete(c.changes, oldFile)
+			delete(c.hashes, oldFile)
+			delete(c.permissions, oldFile)
+			delete(c.sizes, oldFile)
+		}
+	}
+
+	c.expandedFiles = newExpandedFiles
+}
+
+// containsGlobChar 检查路径是否包含通配符
+func containsGlobChar(path string) bool {
+	return strings.ContainsAny(path, "*?[]")
+}
+
+// checkFiles 检查所有配置的文件
+func (c *FileCollector) checkFiles() {
+	// 首先展开通配符
+	c.expandGlobPatterns()
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// 遍历展开后的文件列表
+	for path := range c.expandedFiles {
 		exists := c.checkFileExists(path)
 
 		// Update existence state
@@ -238,9 +293,11 @@ func (c *FileCollector) getFilePermissions(path string) float64 {
 		return 0
 	}
 
-	// Convert os.FileMode to numeric format (e.g. 0644 -> 644)
-	perm := float64(info.Mode().Perm())
-	return perm
+	// Convert os.FileMode to octal format (e.g. 0600 -> 600)
+	mode := info.Mode().Perm()
+	// Calculate octal value manually
+	octal := float64(((mode>>6)&7)*100 + ((mode>>3)&7)*10 + (mode & 7))
+	return octal
 }
 
 // getFileSize returns the file size in bytes
