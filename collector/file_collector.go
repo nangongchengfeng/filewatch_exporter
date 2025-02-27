@@ -25,32 +25,46 @@ type FileCollector struct {
 	config      *config.Config
 	fileExists  *prometheus.Desc
 	fileChanges *prometheus.Desc
+	fileChmod   *prometheus.Desc
 	mutex       sync.Mutex
 	states      map[string]float64
 	changes     map[string]float64
 	hashes      map[string]string
+	permissions map[string]float64
 	lastReset   time.Time
 }
 
-// NewFileCollector 创建一个新的文件收集器
+// NewFileCollector 函数用于创建一个新的FileCollector实例
 func NewFileCollector(config *config.Config) *FileCollector {
+	// 创建一个新的FileCollector实例
 	collector := &FileCollector{
 		config: config,
+		// 创建一个名为filewatch_file_exists的prometheus描述符，用于表示文件是否存在
 		fileExists: prometheus.NewDesc(
 			"filewatch_file_exists",
 			"Indicates whether a file exists (1) or not (0)",
 			[]string{"path"},
 			nil,
 		),
+		// 创建一个名为filewatch_file_change的prometheus描述符，用于表示文件自上次重置以来更改的次数
 		fileChanges: prometheus.NewDesc(
 			"filewatch_file_change",
 			"Number of times the file has changed since last reset",
 			[]string{"path"},
 			nil,
 		),
-		states:    make(map[string]float64),
-		changes:   make(map[string]float64),
-		hashes:    make(map[string]string),
+		fileChmod: prometheus.NewDesc(
+			"filewatch_file_chmod",
+			"Current file permissions in numeric format (e.g. 644)",
+			[]string{"path"},
+			nil,
+		),
+		// 初始化states、changes和hashes三个map
+		states:      make(map[string]float64),
+		changes:     make(map[string]float64),
+		hashes:      make(map[string]string),
+		permissions: make(map[string]float64),
+		// 初始化lastReset为当前时间
 		lastReset: time.Now(),
 	}
 
@@ -65,6 +79,7 @@ func NewFileCollector(config *config.Config) *FileCollector {
 func (c *FileCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.fileExists
 	ch <- c.fileChanges
+	ch <- c.fileChmod
 }
 
 // Collect 实现Collector接口
@@ -85,6 +100,14 @@ func (c *FileCollector) Collect(ch chan<- prometheus.Metric) {
 			c.changes[path],
 			path,
 		)
+		if exists == 1 {
+			ch <- prometheus.MustNewConstMetric(
+				c.fileChmod,
+				prometheus.GaugeValue,
+				c.permissions[path],
+				path,
+			)
+		}
 	}
 }
 
@@ -124,8 +147,16 @@ func (c *FileCollector) checkFiles() {
 		}
 		c.states[path] = exists
 
-		// Check content changes only if file exists
+		// Only check permissions and content if file exists
 		if exists == 1 {
+			// Check file permissions
+			currentPerms := c.getFilePermissions(path)
+			if oldPerms, ok := c.permissions[path]; !ok || oldPerms != currentPerms {
+				log.Printf("File permissions change: %s permissions = %.0f", path, currentPerms)
+			}
+			c.permissions[path] = currentPerms
+
+			// Check content changes
 			currentHash, err := c.calculateFileHash(path)
 			if err != nil {
 				log.Printf("Error calculating hash for %s: %v", path, err)
@@ -174,4 +205,17 @@ func (c *FileCollector) checkFileExists(path string) float64 {
 	}
 	log.Printf("Error checking file %s: %v", path, err)
 	return 0 // 发生错误也视为不存在
+}
+
+// getFilePermissions returns the file permissions in numeric format (e.g. 644)
+func (c *FileCollector) getFilePermissions(path string) float64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		log.Printf("Error getting permissions for %s: %v", path, err)
+		return 0
+	}
+
+	// Convert os.FileMode to numeric format (e.g. 0644 -> 644)
+	perm := float64(info.Mode().Perm())
+	return perm
 }
