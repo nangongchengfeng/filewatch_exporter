@@ -1,7 +1,10 @@
 package config
 
-import "io/ioutil"
-import "gopkg.in/yaml.v2"
+import (
+	"io/ioutil"
+
+	"gopkg.in/yaml.v2"
+)
 
 /**
  * @Author: 南宫乘风
@@ -18,6 +21,7 @@ type Config struct {
 		MetricsPath   string `yaml:"metrics_path"`
 	} `yaml:"server"`
 	Files    []string `yaml:"files"`
+	Dirs     []string `yaml:"dirs"`
 	Interval int      `yaml:"check_interval_seconds"`
 	Reset    int      `yaml:"reset_interval_minutes"`
 }
@@ -31,6 +35,7 @@ func LoadConfig(configPath string) (Config, error) {
 	config.Server.MetricsPath = "/metrics"
 	config.Interval = 10
 	config.Reset = 30
+	config.Dirs = []string{} // 初始化为空切片
 
 	// 读取配置文件
 	data, err := ioutil.ReadFile(configPath)

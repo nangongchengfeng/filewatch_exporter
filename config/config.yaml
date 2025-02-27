@@ -9,8 +9,14 @@ files:
   - "/etc/nginx/nginx.conf"
   - "/var/log/syslog"
   - "/tmp/test.log"
-  - "logs/log.go"
+  - "logs/*.go"
+  - "log.txt"
 
+# 监控的目录列表
+dirs:
+  - "/etc/nginx/"
+  - "/var/log/"
+  - "/tmp/"
 # 检查间隔（秒）
 check_interval_seconds: 30
 # 重置间隔（分钟）

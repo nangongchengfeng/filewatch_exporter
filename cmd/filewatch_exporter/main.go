@@ -54,36 +54,50 @@ func main() {
 	// 注册收集器
 	prometheus.MustRegister(fileCollector)
 
+	// 创建并注册目录监控收集器
+	dirCollector := collector.NewDirCollector(&cfg)
+	prometheus.MustRegister(dirCollector)
+
 	// 启动HTTP服务器
 	http.Handle(cfg.Server.MetricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		renderHomePage(w, cfg)
+		w.Write([]byte(`<html>
+			<head><title>File Monitor Exporter</title></head>
+			<body>
+			<h1>File Monitor Exporter</h1>
+			<p>Monitoring files:</p>
+			<ul>
+				` + getMonitoredFilesHTML(cfg.Files) + `
+			</ul>
+			<p>Monitoring directories:</p>
+			<ul>
+				` + getMonitoredDirsHTML(cfg.Dirs) + `
+			</ul>
+			<p><a href="` + cfg.Server.MetricsPath + `">Metrics</a></p>
+			</body>
+			</html>`))
 	})
 
-	log.Printf("Starting Filewatch Exporter version %s (built: %s, commit: %s)",
-		Version, BuildDate, Commit)
-	log.Printf("Listening on %s", cfg.Server.ListenAddress)
+	log.Printf("Starting File Monitor Exporter on %s", cfg.Server.ListenAddress)
 	log.Printf("Monitoring %d files: %s", len(cfg.Files), strings.Join(cfg.Files, ", "))
+	log.Printf("Monitoring %d directories: %s", len(cfg.Dirs), strings.Join(cfg.Dirs, ", "))
 	log.Fatal(http.ListenAndServe(cfg.Server.ListenAddress, nil))
 }
 
-// 渲染主页
-func renderHomePage(w http.ResponseWriter, cfg config.Config) {
-	var filesHTML strings.Builder
-	for _, file := range cfg.Files {
-		filesHTML.WriteString(fmt.Sprintf("<li>%s</li>", file))
+// 生成监控文件列表的HTML
+func getMonitoredFilesHTML(files []string) string {
+	var html strings.Builder
+	for _, file := range files {
+		html.WriteString("<li>" + file + "</li>")
 	}
+	return html.String()
+}
 
-	html := fmt.Sprintf(`<html>
-	<head><title>Filewatch Exporter</title></head>
-	<body>
-		<h1>Filewatch Exporter</h1>
-		<p>Version: %s</p>
-		<p>Monitoring files:</p>
-		<ul>%s</ul>
-		<p><a href="%s">Metrics</a></p>
-	</body>
-	</html>`, Version, filesHTML.String(), cfg.Server.MetricsPath)
-
-	w.Write([]byte(html))
+// 生成监控目录列表的HTML
+func getMonitoredDirsHTML(dirs []string) string {
+	var html strings.Builder
+	for _, dir := range dirs {
+		html.WriteString("<li>" + dir + "</li>")
+	}
+	return html.String()
 }
