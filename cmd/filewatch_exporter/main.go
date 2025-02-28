@@ -52,14 +52,20 @@ func main() {
 	fileCollector := collector.NewFileCollector(&cfg)
 
 	// 注册收集器
-	prometheus.MustRegister(fileCollector)
+	//prometheus.MustRegister(fileCollector)
 
 	// 创建并注册目录监控收集器
 	dirCollector := collector.NewDirCollector(&cfg)
-	prometheus.MustRegister(dirCollector)
+	//prometheus.MustRegister(dirCollector)
 
+	// 创建自定义注册表
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(fileCollector)
+	registry.MustRegister(dirCollector)
 	// 启动HTTP服务器
-	http.Handle(cfg.Server.MetricsPath, promhttp.Handler())
+	//http.Handle(cfg.Server.MetricsPath, promhttp.Handler())
+	// 启动HTTP服务器，仅暴露自定义注册表中的指标
+	http.Handle(cfg.Server.MetricsPath, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html>
 			<head><title>File Monitor Exporter</title></head>
