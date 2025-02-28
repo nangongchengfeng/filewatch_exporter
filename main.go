@@ -34,6 +34,8 @@ var (
 
 func main() {
 	flag.Parse()
+	// 输出看看是否正确读取参数
+	fmt.Println("使用的配置文件:", *configFile)
 
 	// 打印版本信息并退出
 	if *showVersion {

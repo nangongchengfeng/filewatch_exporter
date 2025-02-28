@@ -1,30 +1,37 @@
-GO           := go
-GOFMT        := $(GO)fmt
-VERSION      := $(shell cat VERSION 2>/dev/null || echo "development")
-COMMIT       := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-BUILD_DATE   := $(shell date -u +"%Y-%m-%d" 2>/dev/null)
-LDFLAGS      := -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildDate=$(BUILD_DATE)
-BINARY_NAME  := filewatch_exporter
+# Makefile
 
-.PHONY: all
-all: style build
+# Go parameters
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+BINARY_NAME=filewatch_exporter
+BINARY_UNIX=$(BINARY_NAME)
+MAIN_PATH=./
 
-.PHONY: style
-style:
-	$(GOFMT) -l -w .
+# Build-time variables
+VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
+LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildDate=$(BUILD_DATE)"
 
-.PHONY: build
+.PHONY: all build clean run build-linux
+
+all: build
+
 build:
-	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/filewatch_exporter
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) $(MAIN_PATH)
 
-.PHONY: test
-test:
-	$(GO) test -v ./...
+build-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_UNIX) $(MAIN_PATH)
 
-.PHONY: clean
 clean:
+	$(GOCLEAN)
 	rm -f $(BINARY_NAME)
+	rm -f $(BINARY_UNIX)
 
-.PHONY: run
 run: build
-	./$(BINARY_NAME) --config=config/config.yaml
+	./$(BINARY_NAME) -config=config/config.yaml
+
+# 交叉编译 Windows 到 Linux (在 Windows 上运行)
+build-linux-windows:
+	SET CGO_ENABLED=0&&SET GOOS=linux&&SET GOARCH=amd64&& $(GOBUILD) $(LDFLAGS) -o $(BINARY_UNIX) $(MAIN_PATH)

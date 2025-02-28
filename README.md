@@ -46,6 +46,24 @@ git clone https://github.com/nangongchengfeng/filewatch_exporter.git
 cd filewatch_exporter
 
 # 构建
+SET CGO_ENABLED=0&&SET GOOS=linux&&SET GOARCH=amd64&& go build -o filewatch_exporter  ./main.go
+
+# 启动
+./filewatch_exporter -config=config.yaml
+
+[root@prometheus-server target]# ./filewatch_exporter -config=config.yaml
+使用的配置文件: config.yaml
+2025/02/28 15:25:28 New file matched by pattern /www/server/panel/vhost/nginx/*.conf: /www/server/panel/vhost/nginx/0.default.conf
+2025/02/28 15:25:28 New file matched by pattern /www/server/panel/vhost/nginx/*.conf: /www/server/panel/vhost/nginx/127.0.0.1.conf
+2025/02/28 15:25:28 New file matched by pattern /www/server/panel/vhost/nginx/*.conf: /www/server/panel/vhost/nginx/192.168.82.105.conf
+2025/02/28 15:25:28 New file matched by pattern /www/server/panel/vhost/nginx/*.conf: /www/server/panel/vhost/nginx/fie.conf
+2025/02/28 15:25:28 New file matched by pattern /www/server/panel/vhost/nginx/*.conf: /www/server/panel/vhost/nginx/minio.conf
+2025/02/28 15:25:28 New file matched by pattern /www/server/panel/vhost/nginx/*.conf: /www/server/panel/vhost/nginx/phpfpm_status.conf
+2025/02/28 15:25:28 New file matched by pattern /www/server/panel/vhost/nginx/*.conf: /www/server/panel/vhost/nginx/two.conf
+
+
+
+
 go build
 ```
 
