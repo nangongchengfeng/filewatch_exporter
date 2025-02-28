@@ -1,161 +1,202 @@
-# Filewatch Exporter
+# File Watch Exporter
 
-基于Go语言开发的文件系统监控工具，用于监控文件和目录变化并通过Prometheus进行指标采集的exporter。
+File Watch Exporter 是一个用于监控文件和目录状态的 Prometheus exporter。它可以监控文件的存在性、变化、权限、大小，以及目录的存在性、大小和文件数量等指标。
 
-## 项目简介
-
-Filewatch Exporter 是一个轻量级的监控工具，专门用于监控文件系统的变化。它可以实时检测文件和目录的变动，并将这些变化转换为Prometheus可以采集的指标数据，便于系统运维和告警管理。
-
-## 核心功能
+## 功能特性
 
 ### 文件监控
-- 监控文件修改时间变化
-- 监控文件大小变化
-- 监控文件内容变化（支持MD5校验）
-- 监控文件权限变更
-- 支持文件存在性检查
+- 文件存在性监控 (`filewatch_file_exists`)
+- 文件内容变化计数 (`filewatch_file_change`)
+- 文件权限监控 (`filewatch_file_chmod`)
+- 文件大小监控 (`filewatch_file_size`)
+- 支持文件路径通配符匹配 (例如: `*.log`, `*.conf`)
 
 ### 目录监控
-- 监控目录下文件数量变化
-- 监控目录总大小变化
-- 支持递归监控子目录
-- 支持文件模式匹配（通配符）
-- 监控目录权限变更
+- 目录存在性监控 (`filewatch_dir_exists`)
+- 目录总大小监控 (`filewatch_dir_size`)
+- 目录文件数量统计 (`filewatch_dir_count`)
 
-### 告警功能
-- 支持自定义告警规则
-- 支持多种告警阈值设置
-- 支持告警延迟和冷却时间
-- 与Prometheus AlertManager集成
-
-### 配置管理
-- 支持YAML格式配置文件
-- 支持热重载配置
-- 支持多个监控目标配置
-- 支持监控项的自定义标签
+### 其他特性
+- 自动定期检查更新
+- 可配置的检查间隔
+- 可配置的计数器重置间隔
+- 详细的日志记录
+- 优雅的错误处理
+- Web UI 界面
 
 ## 技术选型
 
+
+
 ### 基础框架
-- 开发语言: Go 1.20+
+- 开发语言: Go 1.23+
 - 依赖管理: Go Modules
 
-### 核心依赖
-- `github.com/prometheus/client_golang`: Prometheus客户端库
-- `github.com/fsnotify/fsnotify`: 文件系统事件通知
-- `gopkg.in/yaml.v3`: YAML配置解析
-- `github.com/sirupsen/logrus`: 结构化日志
-- `github.com/gin-gonic/gin`: Web框架
+## 快速开始
+### 安装
 
-## 监控指标
+```bash
+# 克隆仓库
+git clone https://github.com/nangongchengfeng/filewatch_exporter.git
 
-### 文件指标
-- `filewatch_file_exists{path="/path/to/file"} 1|0`
-- `filewatch_file_size_bytes{path="/path/to/file"} 1234`
-- `filewatch_file_modified_time_seconds{path="/path/to/file"} 1234567890`
-- `filewatch_file_permission{path="/path/to/file"} 644`
+# 进入项目目录
+cd filewatch_exporter
 
-### 目录指标
-- `filewatch_directory_files_total{path="/path/to/dir"} 10`
-- `filewatch_directory_size_bytes{path="/path/to/dir"} 1234567`
-- `filewatch_directory_changes_total{path="/path/to/dir",type="create|modify|delete"} 5`
+# 构建
+go build
+```
 
-### 系统指标
-- `filewatch_scrape_duration_seconds{} 0.1`
-- `filewatch_scrape_errors_total{} 0`
+### 配置
 
-## 配置示例
+创建配置文件 `config/config.yaml`:
 
 ```yaml
-global:
-  scrape_interval: 30s
-  metrics_path: /metrics
-  listen_address: ":9090"
+# 服务器配置
+server:
+  listen_address: ":9100"  # 监听地址和端口
+  metrics_path: "/metrics" # 指标路径
 
-targets:
-  - name: "nginx-config"
-    paths:
-      - "/etc/nginx/nginx.conf"
-      - "/etc/nginx/conf.d/*.conf"
-    recursive: false
-    labels:
-      service: "nginx"
-      env: "production"
-    checks:
-      - type: "modification"
-        interval: "1m"
-      - type: "existence"
-        interval: "30s"
+# 监控的文件列表
+files:
+  - "/etc/nginx/nginx.conf"
+  - "/var/log/syslog"
+  - "/etc/nginx/conf.d/*.conf"  # 支持通配符
+  - "logs/*.log"
 
-  - name: "app-logs"
-    paths:
-      - "/var/log/app/"
-    recursive: true
-    labels:
-      service: "application"
-      env: "production"
-    checks:
-      - type: "size"
-        interval: "5m"
-      - type: "count"
-        interval: "1m"
+# 监控的目录列表
+dirs:
+  - "/etc/nginx/"
+  - "/var/log/"
+  - "/tmp/"
+
+# 检查间隔（秒）
+check_interval_seconds: 30
+
+# 重置间隔（分钟）
+reset_interval_minutes: 30
 ```
 
-## 快速开始
+### 运行
 
-1. 安装
 ```bash
-go get github.com/yourusername/filewatch_exporter
+./filewatch_exporter
 ```
 
-2. 创建配置文件
-```bash
-cp config.example.yml config.yml
-vim config.yml
-```
+## 指标说明
 
-3. 运行exporter
-```bash
-filewatch_exporter --config.file=config.yml
-```
+### 文件指标
 
-4. 访问metrics接口
-```bash
-curl http://localhost:9090/metrics
-```
+1. `filewatch_file_exists{path="/path/to/file"}`
+   - 类型: Gauge
+   - 描述: 指示文件是否存在
+   - 值: 1 (存在) 或 0 (不存在)
 
-## Prometheus配置
+2. `filewatch_file_change{path="/path/to/file"}`
+   - 类型: Gauge
+   - 描述: 文件内容变化的次数
+   - 值: 0 ~ N (变化次数)
+
+3. `filewatch_file_chmod{path="/path/to/file"}`
+   - 类型: Gauge
+   - 描述: 文件的权限值（八进制）
+   - 值: 例如 644, 755 等
+
+4. `filewatch_file_size{path="/path/to/file"}`
+   - 类型: Gauge
+   - 描述: 文件大小（字节）
+   - 值: >= 0
+
+### 目录指标
+
+1. `filewatch_dir_exists{path="/path/to/dir"}`
+   - 类型: Gauge
+   - 描述: 指示目录是否存在
+   - 值: 1 (存在) 或 0 (不存在)
+
+2. `filewatch_dir_size{path="/path/to/dir"}`
+   - 类型: Gauge
+   - 描述: 目录总大小（字节）
+   - 值: >= 0
+
+3. `filewatch_dir_count{path="/path/to/dir"}`
+   - 类型: Gauge
+   - 描述: 目录中的文件总数
+   - 值: >= 0
+
+## Prometheus 配置
+
+将以下配置添加到 Prometheus 的 `prometheus.yml`:
 
 ```yaml
 scrape_configs:
   - job_name: 'filewatch'
     static_configs:
-      - targets: ['localhost:9090']
-    metrics_path: '/metrics'
-    scrape_interval: 30s
+      - targets: ['localhost:9100']
 ```
 
-## 构建和部署
+## 告警规则示例
 
-### 本地构建
-```bash
-make build
+```yaml
+groups:
+- name: filewatch_alerts
+  rules:
+  - alert: FileNotExists
+    expr: filewatch_file_exists == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "File does not exist"
+      description: "File {{ $labels.path }} does not exist"
+
+  - alert: FileChangedFrequently
+    expr: rate(filewatch_file_change[1h]) > 10
+    for: 15m
+    labels:
+      severity: warning
+    annotations:
+      summary: "File changed frequently"
+      description: "File {{ $labels.path }} has changed more than 10 times in the last hour"
+
+  - alert: DirectorySize
+    expr: filewatch_dir_size > 1e9
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "Directory size exceeds 1GB"
+      description: "Directory {{ $labels.path }} size is {{ $value }} bytes"
 ```
 
-### Docker构建
-```bash
-docker build -t filewatch_exporter .
-docker run -d -p 9090:9090 -v /path/to/config.yml:/etc/filewatch/config.yml filewatch_exporter
-```
+## 错误处理
 
-## 贡献指南
+- 文件/目录不存在时会记录到日志
+- 权限错误会被记录但不会中断监控
+- 所有错误都会在日志中详细记录
 
-欢迎提交Issue和Pull Request来帮助改进项目。在提交PR之前，请确保：
+## Web UI
 
-1. 代码已经通过测试
-2. 新功能已添加测试用例
-3. 文档已更新
+访问 `http://localhost:9100` 可以看到:
+- 当前监控的文件列表
+- 当前监控的目录列表
+- 指标访问链接
+
+## 性能考虑
+
+- 使用互斥锁保护并发访问
+- 高效的文件系统遍历
+- 可配置的检查间隔
+- 优化的内存使用
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
 
 ## 许可证
 
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+MIT License
+
+## 作者
+
+南宫乘风
+Email: 1794748404@qq.com
