@@ -2,6 +2,9 @@
 
 File Watch Exporter 是一个用于监控文件和目录状态的 Prometheus exporter。它可以监控文件的存在性、变化、权限、大小，以及目录的存在性、大小和文件数量等指标。
 
+![img.png](images/img.png)
+![img.png](images/img1.png)
+![img.png](images/img2.png)
 ## 功能特性
 
 ### 文件监控
@@ -135,6 +138,10 @@ scrape_configs:
 ```
 
 ## 告警规则示例
+
+![img.png](images/img3.png)
+
+![img.png](images/img4.png)
 
 ```yaml
 groups:
