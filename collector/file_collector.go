@@ -24,20 +24,20 @@ import (
 
 // FileCollector 实现了Prometheus.Collector接口
 type FileCollector struct {
-	config      *config.Config
-	fileExists  *prometheus.Desc
-	fileChanges *prometheus.Desc
-	fileChmod   *prometheus.Desc
-	fileSize    *prometheus.Desc
-	mutex       sync.Mutex
-	states      map[string]float64
-	changes     map[string]float64
-	hashes      map[string]string
-	permissions map[string]float64
-	sizes       map[string]float64
-	lastReset   time.Time
+	config      *config.Config     // 配置
+	fileExists  *prometheus.Desc   // 文件是否存在
+	fileChanges *prometheus.Desc   // 文件变化次数
+	fileChmod   *prometheus.Desc   // 文件修改权限
+	fileSize    *prometheus.Desc   // 文件大小
+	mutex       sync.Mutex         // 互斥锁
+	states      map[string]float64 // 文件状态
+	changes     map[string]float64 // 文件变化次数
+	hashes      map[string]string  // 文件哈希
+	permissions map[string]float64 // 文件权限
+	sizes       map[string]float64 // 文件大小
+	lastReset   time.Time          // 上次重置时间
 	// 存储展开后的文件列表
-	expandedFiles map[string]bool
+	expandedFiles map[string]bool // 展开后的文件列表
 }
 
 // NewFileCollector 函数用于创建一个新的FileCollector实例
