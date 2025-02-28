@@ -16,9 +16,11 @@ type DirCollector struct {
 	config    *config.Config
 	dirSize   *prometheus.Desc
 	dirExists *prometheus.Desc
+	dirCount  *prometheus.Desc
 	mutex     sync.Mutex
 	sizes     map[string]float64
 	exists    map[string]float64
+	counts    map[string]float64
 	lastScan  time.Time
 }
 
@@ -38,8 +40,15 @@ func NewDirCollector(config *config.Config) *DirCollector {
 			[]string{"path"},
 			nil,
 		),
+		dirCount: prometheus.NewDesc(
+			"filewatch_dir_count",
+			"Total number of files in directory",
+			[]string{"path"},
+			nil,
+		),
 		sizes:    make(map[string]float64),
 		exists:   make(map[string]float64),
+		counts:   make(map[string]float64),
 		lastScan: time.Now(),
 	}
 
@@ -53,6 +62,7 @@ func NewDirCollector(config *config.Config) *DirCollector {
 func (c *DirCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dirSize
 	ch <- c.dirExists
+	ch <- c.dirCount
 }
 
 // Collect 实现Collector接口
@@ -67,12 +77,18 @@ func (c *DirCollector) Collect(ch chan<- prometheus.Metric) {
 			exists,
 			path,
 		)
-		// 只有当目录存在时才输出大小指标
+		// 只有当目录存在时才输出大小和文件数量指标
 		if exists == 1 {
 			ch <- prometheus.MustNewConstMetric(
 				c.dirSize,
 				prometheus.GaugeValue,
 				c.sizes[path],
+				path,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.dirCount,
+				prometheus.GaugeValue,
+				c.counts[path],
 				path,
 			)
 		}
@@ -105,8 +121,9 @@ func (c *DirCollector) checkDirs() {
 		}
 		c.exists[dirPath] = exists
 
-		// 只有当目录存在时才计算大小
+		// 只有当目录存在时才计算大小和文件数量
 		if exists == 1 {
+			// 计算目录大小
 			size, err := c.calculateDirSize(dirPath)
 			if err != nil {
 				log.Printf("Error calculating size for directory %s: %v", dirPath, err)
@@ -118,6 +135,19 @@ func (c *DirCollector) checkDirs() {
 				log.Printf("Directory size change: %s size = %.0f bytes", dirPath, size)
 			}
 			c.sizes[dirPath] = size
+
+			// 计算文件数量
+			count, err := c.calculateFileCount(dirPath)
+			if err != nil {
+				log.Printf("Error calculating file count for directory %s: %v", dirPath, err)
+				continue
+			}
+
+			// 检查文件数量是否发生变化
+			if oldCount, ok := c.counts[dirPath]; !ok || oldCount != count {
+				log.Printf("Directory file count change: %s count = %.0f files", dirPath, count)
+			}
+			c.counts[dirPath] = count
 		}
 	}
 }
@@ -159,4 +189,27 @@ func (c *DirCollector) calculateDirSize(path string) (float64, error) {
 	}
 
 	return float64(size), nil
+}
+
+// calculateFileCount 计算目录中的文件总数
+func (c *DirCollector) calculateFileCount(path string) (float64, error) {
+	var count int64
+
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			// 如果遇到权限错误或其他错误，记录日志但继续处理
+			log.Printf("Warning: error accessing path %s: %v", path, err)
+			return nil
+		}
+		if !info.IsDir() {
+			count++
+		}
+		return nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	return float64(count), nil
 }
