@@ -45,6 +45,9 @@ git clone https://github.com/nangongchengfeng/filewatch_exporter.git
 # 进入项目目录
 cd filewatch_exporter
 
+# 下载依赖包
+go mod tidy
+
 # 构建
 SET CGO_ENABLED=0&&SET GOOS=linux&&SET GOARCH=amd64&& go build -o filewatch_exporter  ./main.go
 
@@ -62,7 +65,7 @@ SET CGO_ENABLED=0&&SET GOOS=linux&&SET GOARCH=amd64&& go build -o filewatch_expo
 2025/02/28 15:25:28 New file matched by pattern /www/server/panel/vhost/nginx/*.conf: /www/server/panel/vhost/nginx/two.conf
 
 
-
+或者使用make命令编译
 
 go build
 ```
